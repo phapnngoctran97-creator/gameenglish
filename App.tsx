@@ -77,8 +77,13 @@ export default function App() {
     setGameState(GameState.LOADING_BATTLE);
     setLoadingText(`Traveling to ${topic.name}...`);
     
+    // Determine number of questions based on difficulty
+    let questionCount = 5; // Default/Easy
+    if (topic.difficulty === Difficulty.MEDIUM) questionCount = 7;
+    if (topic.difficulty === Difficulty.HARD) questionCount = 10;
+
     // Generate questions for this battle
-    const questions = await generateQuestions(topic.name, topic.difficulty);
+    const questions = await generateQuestions(topic.name, topic.difficulty, questionCount);
     setBattleQuestions(questions);
     setGameState(GameState.BATTLE);
   };
@@ -186,7 +191,7 @@ export default function App() {
         <Loader2 className="w-16 h-16 text-blue-400 animate-spin relative z-10" />
       </div>
       <h2 className="mt-8 text-2xl font-pixel text-white">{loadingText}</h2>
-      <p className="mt-2 text-slate-500">Preparing battle logic...</p>
+      <p className="mt-2 text-slate-500">Generating unique challenges...</p>
     </div>
   );
 
