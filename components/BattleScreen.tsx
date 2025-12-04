@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Question, PlayerStats, Topic, Difficulty, QuestionType } from '../types';
 import { Button } from './Button';
-import { Heart, Shield, Sparkles, Volume2, Mic, MicOff, Keyboard, Clock } from 'lucide-react';
+import { Heart, Shield, Sparkles, Volume2, Mic, MicOff, Keyboard, Clock, Activity } from 'lucide-react';
 
 interface BattleScreenProps {
   topic: Topic;
@@ -190,7 +190,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       case QuestionType.SPEAKING:
         return (
           <div className="flex flex-col items-center gap-6 py-4">
-            <p className="text-xl text-yellow-300 font-bold">" {currentQ.correctAnswer} "</p>
+            <div className="bg-slate-700/50 p-4 rounded-lg border border-slate-600 w-full text-center">
+               <p className="text-xl text-yellow-300 font-bold tracking-wide">" {currentQ.correctAnswer} "</p>
+            </div>
             <button
               onClick={startListening}
               disabled={isAnswering}
@@ -220,7 +222,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
               onKeyDown={(e) => e.key === 'Enter' && checkAnswer(writtenAnswer)}
               placeholder="Type your answer here..."
               disabled={isAnswering}
-              className="w-full bg-slate-700 border-2 border-slate-500 rounded-lg p-4 text-white text-lg focus:border-blue-500 focus:outline-none"
+              className="w-full bg-slate-700 border-2 border-slate-500 rounded-lg p-4 text-white text-lg focus:border-blue-500 focus:outline-none placeholder-slate-500"
               autoFocus
             />
              <Button onClick={() => checkAnswer(writtenAnswer)} disabled={!writtenAnswer || isAnswering} className="self-end">
@@ -245,12 +247,12 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                     <Button
                         key={idx}
                         variant={btnVariant}
-                        className="w-full text-left flex items-center justify-between"
+                        className="w-full text-left flex items-center justify-between min-h-[60px]"
                         onClick={() => checkAnswer(option)}
                         disabled={isAnswering}
                     >
-                        <span>{option}</span>
-                        {isAnswering && option === currentQ.correctAnswer && <Sparkles size={16} />}
+                        <span className="break-words w-[90%]">{option}</span>
+                        {isAnswering && option === currentQ.correctAnswer && <Sparkles size={16} className="shrink-0" />}
                     </Button>
                 );
             })}
@@ -273,7 +275,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         {/* Player Stats */}
         <div className="flex flex-col w-1/3 z-10">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xl font-pixel text-blue-400">HERO</span>
+            <span className="text-xl font-pixel text-blue-400 hidden md:inline">HERO</span>
+            <Activity size={16} className="text-blue-400 md:hidden" />
           </div>
           <div className="w-full bg-slate-900 rounded-full h-4 border border-slate-600">
             <div 
@@ -287,7 +290,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         </div>
 
         {/* Timer Display */}
-        <div className="text-center z-10 flex flex-col items-center">
+        <div className="text-center z-10 flex flex-col items-center mx-4">
              <div className={`font-pixel text-2xl ${timeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
                 {timeLeft}s
              </div>
@@ -297,7 +300,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         {/* Monster Stats */}
         <div className="flex flex-col w-1/3 items-end z-10">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xl font-pixel text-red-400">MONSTER</span>
+            <span className="text-xl font-pixel text-red-400 hidden md:inline">ENEMY</span>
+            <Activity size={16} className="text-red-400 md:hidden" />
           </div>
           <div className="w-full bg-slate-900 rounded-full h-4 border border-slate-600">
             <div 
@@ -313,28 +317,47 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
       {/* Main Battle Area */}
       <div className="flex-1 flex flex-col justify-center items-center relative mb-6">
-        {/* Visual Representations */}
-        <div className="flex justify-between w-full px-12 mb-4 items-end h-32 md:h-40">
-            <div className="text-6xl filter drop-shadow-[0_0_10px_rgba(59,130,246,0.5)] transform scale-x-[-1]">
-                🧙‍♂️
+        
+        {/* Battle Scene */}
+        <div className="flex justify-between w-full px-4 md:px-20 mb-4 items-end h-32 md:h-40">
+            <div className="flex flex-col items-center">
+                 <div className="text-xs font-bold text-blue-400 mb-2 bg-slate-900 px-2 py-1 rounded">YOU</div>
+                 <div className="text-5xl md:text-6xl filter drop-shadow-[0_0_10px_rgba(59,130,246,0.5)] transform scale-x-[-1]">
+                    🧙‍♂️
+                 </div>
             </div>
             
-            <div className={`text-8xl transition-transform duration-300 ${isAnswering && feedback?.isCorrect ? 'opacity-50 scale-90 grayscale' : 'animate-bounce-slow'}`}>
-                {topic.difficulty === Difficulty.HARD ? '🐉' : topic.difficulty === Difficulty.MEDIUM ? '👹' : '👾'}
+            <div className="flex flex-col items-center">
+                <div className="text-xs font-bold text-red-400 mb-2 bg-slate-900 px-2 py-1 rounded">
+                   {topic.difficulty} MODE
+                </div>
+                <div className={`text-7xl md:text-8xl transition-transform duration-300 ${isAnswering && feedback?.isCorrect ? 'opacity-50 scale-90 grayscale' : 'animate-bounce-slow'}`}>
+                    {topic.difficulty === Difficulty.HARD ? '🐉' : topic.difficulty === Difficulty.MEDIUM ? '👹' : '👾'}
+                </div>
             </div>
         </div>
 
         {/* Question Card */}
-        <div className="w-full bg-slate-800 rounded-xl p-6 border-2 border-indigo-500 shadow-2xl relative">
+        <div className="w-full bg-slate-800 rounded-xl p-4 md:p-6 border-2 border-indigo-500 shadow-2xl relative">
             <div className="flex justify-between items-start mb-4">
-                <div className="bg-indigo-600 px-3 py-1 rounded text-xs font-bold uppercase tracking-widest text-white shadow-sm">
-                    {currentQ.type} CHALLENGE • {currentQuestionIndex + 1}/{questions.length}
+                <div className="flex flex-col gap-1">
+                   <div className="flex items-center gap-2">
+                       <span className="bg-indigo-600 px-2 py-1 rounded text-[10px] md:text-xs font-bold uppercase tracking-widest text-white shadow-sm">
+                           {currentQ.type}
+                       </span>
+                       <span className="text-xs text-slate-400">
+                           {currentQuestionIndex + 1} of {questions.length}
+                       </span>
+                   </div>
+                   {currentQ.type === QuestionType.SPEAKING && (
+                     <span className="text-xs text-yellow-400 font-bold">Mic Required</span>
+                   )}
                 </div>
                 
                 {/* TTS Button */}
                 <button 
                   onClick={() => speakText(currentQ.listeningText || currentQ.question)}
-                  className="bg-slate-700 hover:bg-slate-600 p-2 rounded-full transition-colors border border-slate-500"
+                  className="bg-slate-700 hover:bg-slate-600 p-2 rounded-full transition-colors border border-slate-500 active:scale-95"
                   title="Read Aloud"
                 >
                   <Volume2 size={20} className="text-blue-300" />
@@ -343,16 +366,21 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             
             {/* Listening specific UI */}
             {currentQ.type === QuestionType.LISTENING && (
-               <div className="bg-blue-900/30 p-4 rounded-lg border border-blue-800 mb-4 flex items-center gap-3">
-                  <div className="bg-blue-600 p-2 rounded-full animate-pulse">
+               <div className="bg-blue-900/30 p-4 rounded-lg border border-blue-800 mb-4 flex items-center gap-3 animate-fade-in">
+                  <button 
+                    onClick={() => speakText(currentQ.listeningText || "")}
+                    className="bg-blue-600 hover:bg-blue-500 p-3 rounded-full transition-all shadow-lg hover:scale-105"
+                  >
                      <Volume2 size={24} className="text-white" />
+                  </button>
+                  <div className="flex flex-col">
+                      <span className="text-white font-bold text-sm">Tap to Listen</span>
+                      <span className="text-blue-200 text-xs italic">Listen carefully to the audio clip.</span>
                   </div>
-                  <span className="text-blue-200 text-sm italic">Listen to the audio, then answer the question.</span>
-                  <Button size="sm" onClick={() => speakText(currentQ.listeningText || "")}>Play Audio</Button>
                </div>
             )}
 
-            <h3 className="text-xl md:text-2xl font-bold text-white mb-2 leading-relaxed">
+            <h3 className="text-lg md:text-2xl font-bold text-white mb-2 leading-relaxed">
                 {currentQ.question}
             </h3>
             
@@ -367,7 +395,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
             {/* Feedback Overlay */}
             {feedback && (
-                <div className={`mt-4 p-3 rounded-lg text-center font-bold border-2 ${feedback.isCorrect ? 'bg-green-900/50 border-green-500 text-green-300' : 'bg-red-900/50 border-red-500 text-red-300'}`}>
+                <div className={`mt-4 p-3 rounded-lg text-center font-bold border-2 animate-bounce-short ${feedback.isCorrect ? 'bg-green-900/50 border-green-500 text-green-300' : 'bg-red-900/50 border-red-500 text-red-300'}`}>
                     {feedback.text}
                 </div>
             )}

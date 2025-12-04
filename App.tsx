@@ -75,10 +75,10 @@ export default function App() {
   const handleSelectTopic = async (topic: Topic) => {
     setCurrentTopic(topic);
     setGameState(GameState.LOADING_BATTLE);
-    setLoadingText(`Traveling to ${topic.name}...`);
+    setLoadingText(`Preparing Challenge: ${topic.name}...`);
     
-    // Determine number of questions based on difficulty
-    let questionCount = 5; // Default/Easy
+    // STRICT DIFFICULTY & QUESTION COUNT LOGIC
+    let questionCount = 5; 
     if (topic.difficulty === Difficulty.MEDIUM) questionCount = 7;
     if (topic.difficulty === Difficulty.HARD) questionCount = 10;
 
@@ -92,9 +92,9 @@ export default function App() {
     if (!currentTopic) return;
 
     // Calculate Rewards
-    const xpGain = currentTopic.difficulty === Difficulty.HARD ? 100 : currentTopic.difficulty === Difficulty.MEDIUM ? 60 : 30;
-    const goldGain = currentTopic.difficulty === Difficulty.HARD ? 50 : currentTopic.difficulty === Difficulty.MEDIUM ? 30 : 15;
-    const levelUp = (playerStats.xp + xpGain) >= (playerStats.level * 100);
+    const xpGain = currentTopic.difficulty === Difficulty.HARD ? 150 : currentTopic.difficulty === Difficulty.MEDIUM ? 100 : 50;
+    const goldGain = currentTopic.difficulty === Difficulty.HARD ? 100 : currentTopic.difficulty === Difficulty.MEDIUM ? 50 : 25;
+    const levelUp = (playerStats.xp + xpGain) >= (playerStats.level * 150); // Harder to level up
 
     const newStats = {
       ...playerStats,
@@ -115,15 +115,12 @@ export default function App() {
       newTopics[currentIndex + 1].isLocked = false;
       setTopics(newTopics);
       
-      // Infinite Generation Trigger:
-      // If we just unlocked one of the last 3 topics, fetch the next batch in background
+      // Infinite Generation Trigger
       if (currentIndex >= topics.length - 3) {
         loadMoreTopics();
       }
     } else {
-      // We are at the very end of the array, force load immediately if not already
       loadMoreTopics().then(() => {
-        // Once loaded, unlock the next one (which is now index + 1)
         setTopics(current => {
            const updated = [...current];
            if (updated[currentIndex + 1]) {
@@ -152,10 +149,13 @@ export default function App() {
   };
 
   const handleRestart = () => {
-    setPlayerStats(INITIAL_STATS);
-    setGameState(GameState.HOME);
-    setTopics([]); // Clear topics to force regenerate
-    loadInitialWorld();
+    if (window.confirm("Are you sure you want to reset all progress?")) {
+      setPlayerStats(INITIAL_STATS);
+      setGameState(GameState.HOME);
+      setTopics([]); // Clear topics to force regenerate
+      localStorage.clear(); // Clear all cache
+      window.location.reload();
+    }
   };
 
   // --- RENDER HELPERS ---
@@ -169,7 +169,8 @@ export default function App() {
         LINGO QUEST
       </h1>
       <p className="text-xl text-slate-300 max-w-lg font-light leading-relaxed">
-        Embark on an epic journey to master English. Defeat monsters with your vocabulary skills!
+        Master English from A1 to C2. <br/>
+        Reading • Listening • Speaking • Writing
       </p>
       {topics.length === 0 ? (
          <div className="flex flex-col items-center gap-4">
@@ -178,7 +179,7 @@ export default function App() {
          </div>
       ) : (
         <Button size="lg" onClick={handleStartClick} className="animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.6)]">
-          {userProfile ? "Continue Adventure" : "Start Adventure"}
+          {userProfile ? `Continue as ${userProfile.name}` : "Start Adventure"}
         </Button>
       )}
     </div>
@@ -190,7 +191,7 @@ export default function App() {
         <div className="absolute inset-0 bg-blue-500 rounded-full opacity-20 animate-ping"></div>
         <Loader2 className="w-16 h-16 text-blue-400 animate-spin relative z-10" />
       </div>
-      <h2 className="mt-8 text-2xl font-pixel text-white">{loadingText}</h2>
+      <h2 className="mt-8 text-2xl font-pixel text-white text-center px-4">{loadingText}</h2>
       <p className="mt-2 text-slate-500">Generating unique challenges...</p>
     </div>
   );
@@ -204,11 +205,11 @@ export default function App() {
       <div className="grid grid-cols-2 gap-4 mb-8 w-full max-w-sm">
         <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-center gap-2 border border-slate-700">
           <Star className="text-yellow-400" /> 
-          <span className="font-bold">+{currentTopic?.difficulty === Difficulty.HARD ? 100 : 50} XP</span>
+          <span className="font-bold">+{currentTopic?.difficulty === Difficulty.HARD ? 150 : 50} XP</span>
         </div>
         <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-center gap-2 border border-slate-700">
           <Coins className="text-yellow-600" />
-          <span className="font-bold">+{currentTopic?.difficulty === Difficulty.HARD ? 50 : 20} Gold</span>
+          <span className="font-bold">+{currentTopic?.difficulty === Difficulty.HARD ? 100 : 20} Gold</span>
         </div>
       </div>
 
