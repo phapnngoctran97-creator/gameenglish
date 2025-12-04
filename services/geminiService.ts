@@ -26,7 +26,7 @@ const WORLD_THEMES = [
 ];
 
 // --- CACHING SYSTEM ---
-const CACHE_PREFIX = 'lingoquest_v6_'; // Bumped version
+const CACHE_PREFIX = 'lingoquest_v7_'; // Bumped version to v7
 
 const getFromCache = <T>(key: string): T | null => {
   try {
@@ -45,6 +45,32 @@ const saveToCache = (key: string, data: any) => {
     console.warn("Cache write error (Quota exceeded?):", e);
   }
 };
+
+const cleanJson = (text: string) => {
+  return text.replace(/^```json\s*/, "").replace(/^```/, "").replace(/```$/, "").trim();
+};
+
+// Helper to generate fallback questions if API fails or returns insufficient data
+const generateFallbackQuestions = (topicName: string, count: number, startIndex: number = 0): Question[] => {
+  return Array.from({ length: count }).map((_, i) => {
+    const id = startIndex + i;
+    // Rotate through types
+    const types = [QuestionType.READING, QuestionType.LISTENING, QuestionType.WRITING];
+    const type = types[id % types.length];
+    
+    return {
+      id: `fallback-${Date.now()}-${id}`,
+      type: type,
+      question: `Challenge #${id + 1} for ${topicName}: What is a key word related to this topic?`,
+      options: ["Word A", "Word B", "Word C", "Word D"],
+      correctAnswer: "Word A",
+      explanation: "This is a local challenge generated because the connection to the Game Master was weak.",
+      vietnameseTranslation: "Câu hỏi thử thách cục bộ (do lỗi kết nối).",
+      listeningText: `Listen carefully. This is a practice sentence about ${topicName}.`
+    };
+  });
+};
+
 // ----------------------
 
 export const generateTopics = async (startLevel: number = 1, count: number = 10): Promise<Topic[]> => {
@@ -88,7 +114,7 @@ export const generateTopics = async (startLevel: number = 1, count: number = 10)
       Return strictly JSON.`,
     });
 
-    const rawTopics = JSON.parse(response.text || "[]");
+    const rawTopics = JSON.parse(cleanJson(response.text || "[]"));
     
     const processedTopics = rawTopics.map((t: any, index: number) => ({
       ...t,
@@ -121,19 +147,15 @@ export const generateQuestions = async (topicName: string, difficulty: Difficult
   // NOTE: REMOVED CACHING FOR QUESTIONS to ensure variety every time.
   
   try {
-    // Exact distribution logic
-    const readingCount = Math.max(1, Math.floor(count * 0.3)); // 30%
-    const listeningCount = Math.max(1, Math.floor(count * 0.3)); // 30%
-    const speakingCount = Math.max(1, Math.floor(count * 0.2)); // 20%
-    const writingCount = count - readingCount - listeningCount - speakingCount; // Remainder (approx 20%)
-
     const cefrLevel = difficulty === Difficulty.HARD ? "C1 (Advanced)" : difficulty === Difficulty.MEDIUM ? "B1 (Intermediate)" : "A1 (Beginner)";
-    const randomSeed = Date.now(); // Ensure unique prompt every time
+    const randomSeed = Date.now();
 
+    // Simplified prompt to reduce model confusion, but demanding strict array output
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
+        temperature: 1.2, // High creativity to avoid repetition
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -152,52 +174,62 @@ export const generateQuestions = async (topicName: string, difficulty: Difficult
           },
         },
       },
-      contents: `Generate EXACTLY ${count} English questions for '${topicName}'.
-      Target CEFR Level: ${cefrLevel}.
+      contents: `Generate a JSON Array of EXACTLY ${count} English questions for the RPG location: '${topicName}'.
+      Difficulty Level: ${cefrLevel}.
       Random Seed: ${randomSeed}.
       
-      STRICT DISTRIBUTION:
-      - ${readingCount} questions of type READING (Multiple choice).
-      - ${listeningCount} questions of type LISTENING (Text to be read by AI, then user answers).
-      - ${speakingCount} questions of type SPEAKING (User must read a sentence aloud).
-      - ${writingCount} questions of type WRITING (User must translate or fill blank).
-
-      SORT ORDER:
-      Start with Reading/Listening (Easier) -> End with Speaking/Writing (Harder).
-      
-      IMPORTANT:
-      - For LISTENING: 'listeningText' MUST be provided.
-      - For SPEAKING: 'correctAnswer' is the sentence to read.
-      - Provide 4 options for READING/LISTENING.
+      Requirements:
+      1. Mixed Types: Reading, Listening, Speaking, Writing.
+      2. For 'LISTENING': Provide 'listeningText'.
+      3. For 'SPEAKING': 'correctAnswer' is the sentence to read.
+      4. For 'WRITING': The user must type the answer.
+      5. Provide 'vietnameseTranslation' for context.
       `,
     });
 
-    const rawQuestions = JSON.parse(response.text || "[]");
+    let text = cleanJson(response.text || "[]");
+    let rawQuestions: any[] = [];
     
-    // Fallback if AI generates fewer questions than requested
-    if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
-      throw new Error("Invalid questions generated");
+    try {
+      rawQuestions = JSON.parse(text);
+      // Handle case where model returns an object wrapper like { items: [...] }
+      if (!Array.isArray(rawQuestions) && (rawQuestions as any).items && Array.isArray((rawQuestions as any).items)) {
+        rawQuestions = (rawQuestions as any).items;
+      }
+      if (!Array.isArray(rawQuestions)) {
+        rawQuestions = []; // Reset if invalid format
+      }
+    } catch (e) {
+      console.error("JSON Parse Error on Questions:", e);
+      rawQuestions = [];
     }
 
-    const processedQuestions = rawQuestions.map((q: any, i: number) => ({
+    // Process and valid questions
+    let processedQuestions = rawQuestions.map((q: any, i: number) => ({
       ...q,
-      id: `q-${randomSeed}-${i}`
+      id: `q-${randomSeed}-${i}`,
+      // Ensure options exist for multiple choice
+      options: q.options || ["Yes", "No", "Maybe", "Unsure"]
     }));
+
+    // BACKFILL LOGIC: If AI generated fewer questions than 'count', fill with generated fallbacks
+    if (processedQuestions.length < count) {
+      console.warn(`AI only returned ${processedQuestions.length}/${count} questions. Backfilling...`);
+      const missingCount = count - processedQuestions.length;
+      const backfill = generateFallbackQuestions(topicName, missingCount, processedQuestions.length);
+      processedQuestions = [...processedQuestions, ...backfill];
+    }
+
+    // Trim if too many (rare)
+    if (processedQuestions.length > count) {
+        processedQuestions = processedQuestions.slice(0, count);
+    }
 
     return processedQuestions;
 
   } catch (error) {
-    console.error("Failed to generate questions:", error);
-    // Robust fallback that ensures we return 'count' items
-    return Array.from({ length: count }).map((_, i) => ({
-      id: `fallback-${Date.now()}-${i}`,
-      type: QuestionType.READING,
-      question: `Fallback Question ${i + 1}: Choose the correct greeting.`,
-      options: ["Hello", "Goodbye", "Apple", "Blue"],
-      correctAnswer: "Hello",
-      explanation: "This is a fallback question because the AI service was interrupted.",
-      vietnameseTranslation: "Chọn lời chào đúng."
-    }));
+    console.error("Failed to generate questions (API Error):", error);
+    return generateFallbackQuestions(topicName, count);
   }
 };
 
@@ -228,7 +260,7 @@ export const generateLeaderboard = async (topicName: string): Promise<Leaderboar
       contents: `Generate 5 fictional competitors for leaderboard. High scores.`,
     });
     
-    const data = JSON.parse(response.text || "[]");
+    const data = JSON.parse(cleanJson(response.text || "[]"));
     const processedData = data.map((d: any, i: number) => ({ ...d, rank: i + 1 }));
     saveToCache(cacheKey, processedData);
     return processedData;

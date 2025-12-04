@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Question, PlayerStats, Topic, Difficulty, QuestionType } from '../types';
 import { Button } from './Button';
-import { Heart, Shield, Sparkles, Volume2, Mic, MicOff, Keyboard, Clock, Activity } from 'lucide-react';
+import { Heart, Shield, Sparkles, Volume2, Mic, MicOff, Keyboard, Clock, Activity, AlertCircle } from 'lucide-react';
 
 interface BattleScreenProps {
   topic: Topic;
@@ -52,7 +52,30 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
+  // Safety check: if questions are empty (should not happen due to service fallback, but good for safety)
+  if (!questions || questions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <AlertCircle size={48} className="text-red-500 mb-4" />
+        <h3 className="text-xl font-bold text-white mb-2">No Challenges Found</h3>
+        <p className="text-slate-400 mb-6">The Game Master could not generate challenges for this zone.</p>
+        <Button onClick={onDefeat}>Return to Map</Button>
+      </div>
+    );
+  }
+
   const currentQ = questions[currentQuestionIndex];
+  
+  // Safety check: if currentQ is undefined
+  if (!currentQ) {
+     return (
+       <div className="flex flex-col items-center justify-center h-full">
+         <p className="text-white">Loading error...</p>
+         <Button onClick={onVictory} className="mt-4">Skip</Button>
+       </div>
+     );
+  }
+
   const damageToPlayer = topic.difficulty === Difficulty.HARD ? 25 : topic.difficulty === Difficulty.MEDIUM ? 15 : 10;
   const damageToMonster = Math.ceil(100 / questions.length);
 
