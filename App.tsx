@@ -74,6 +74,7 @@ export default function App() {
 
   const handleSelectTopic = async (topic: Topic) => {
     setCurrentTopic(topic);
+    setBattleQuestions([]); // Clear previous questions immediately
     setGameState(GameState.LOADING_BATTLE);
     setLoadingText(`Preparing Challenge: ${topic.name}...`);
     
@@ -306,6 +307,7 @@ export default function App() {
         )}
         {gameState === GameState.BATTLE && currentTopic && (
           <BattleScreen 
+            key={currentTopic.id + Date.now()} // Force remount on new battle
             topic={currentTopic}
             questions={battleQuestions}
             playerStats={playerStats}

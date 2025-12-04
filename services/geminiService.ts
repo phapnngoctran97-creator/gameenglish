@@ -26,7 +26,7 @@ const WORLD_THEMES = [
 ];
 
 // --- CACHING SYSTEM ---
-const CACHE_PREFIX = 'lingoquest_v5_'; // Bumped version to invalidate old cache
+const CACHE_PREFIX = 'lingoquest_v6_'; // Bumped version
 
 const getFromCache = <T>(key: string): T | null => {
   try {
@@ -118,12 +118,8 @@ export const generateTopics = async (startLevel: number = 1, count: number = 10)
 };
 
 export const generateQuestions = async (topicName: string, difficulty: Difficulty, count: number): Promise<Question[]> => {
-  const cacheKey = `questions_${topicName.replace(/\s+/g, '')}_${difficulty}_${count}`;
-  const cachedData = getFromCache<Question[]>(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
-
+  // NOTE: REMOVED CACHING FOR QUESTIONS to ensure variety every time.
+  
   try {
     // Exact distribution logic
     const readingCount = Math.max(1, Math.floor(count * 0.3)); // 30%
@@ -132,6 +128,7 @@ export const generateQuestions = async (topicName: string, difficulty: Difficult
     const writingCount = count - readingCount - listeningCount - speakingCount; // Remainder (approx 20%)
 
     const cefrLevel = difficulty === Difficulty.HARD ? "C1 (Advanced)" : difficulty === Difficulty.MEDIUM ? "B1 (Intermediate)" : "A1 (Beginner)";
+    const randomSeed = Date.now(); // Ensure unique prompt every time
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -155,8 +152,9 @@ export const generateQuestions = async (topicName: string, difficulty: Difficult
           },
         },
       },
-      contents: `Generate exactly ${count} English questions for '${topicName}'.
+      contents: `Generate EXACTLY ${count} English questions for '${topicName}'.
       Target CEFR Level: ${cefrLevel}.
+      Random Seed: ${randomSeed}.
       
       STRICT DISTRIBUTION:
       - ${readingCount} questions of type READING (Multiple choice).
@@ -167,31 +165,37 @@ export const generateQuestions = async (topicName: string, difficulty: Difficult
       SORT ORDER:
       Start with Reading/Listening (Easier) -> End with Speaking/Writing (Harder).
       
-      For LISTENING: Ensure 'listeningText' is a full sentence or short dialogue.
-      For SPEAKING: 'correctAnswer' is the exact phrase they must say. 'question' is "Read this aloud: ..."
-      For WRITING: 'question' is the prompt (e.g. "Translate to English: ...").
+      IMPORTANT:
+      - For LISTENING: 'listeningText' MUST be provided.
+      - For SPEAKING: 'correctAnswer' is the sentence to read.
+      - Provide 4 options for READING/LISTENING.
       `,
     });
 
     const rawQuestions = JSON.parse(response.text || "[]");
+    
+    // Fallback if AI generates fewer questions than requested
+    if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+      throw new Error("Invalid questions generated");
+    }
+
     const processedQuestions = rawQuestions.map((q: any, i: number) => ({
       ...q,
-      id: `q-${Date.now()}-${i}`
+      id: `q-${randomSeed}-${i}`
     }));
 
-    saveToCache(cacheKey, processedQuestions);
     return processedQuestions;
 
   } catch (error) {
     console.error("Failed to generate questions:", error);
-    // Minimal fallback
+    // Robust fallback that ensures we return 'count' items
     return Array.from({ length: count }).map((_, i) => ({
-      id: `fallback-${i}`,
+      id: `fallback-${Date.now()}-${i}`,
       type: QuestionType.READING,
-      question: "Select the correct greeting.",
+      question: `Fallback Question ${i + 1}: Choose the correct greeting.`,
       options: ["Hello", "Goodbye", "Apple", "Blue"],
       correctAnswer: "Hello",
-      explanation: "Standard greeting.",
+      explanation: "This is a fallback question because the AI service was interrupted.",
       vietnameseTranslation: "Chọn lời chào đúng."
     }));
   }
