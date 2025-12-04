@@ -14,6 +14,13 @@ export enum Difficulty {
   HARD = 'Hard'
 }
 
+export enum QuestionType {
+  READING = 'READING',     // Multiple choice standard
+  LISTENING = 'LISTENING', // Listen to text, answer question
+  SPEAKING = 'SPEAKING',   // Read aloud a sentence
+  WRITING = 'WRITING'      // Fill in the blank / Unscramble
+}
+
 export interface Topic {
   id: string;
   name: string;
@@ -27,11 +34,13 @@ export interface Topic {
 
 export interface Question {
   id: string;
+  type: QuestionType;
   question: string;
-  options: string[];
+  options?: string[]; // For Reading/Listening
   correctAnswer: string;
   explanation: string;
   vietnameseTranslation?: string;
+  listeningText?: string; // Text to be spoken by AI for Listening tasks
 }
 
 export interface PlayerStats {
