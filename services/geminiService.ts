@@ -1,243 +1,144 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Topic, Question, Difficulty, LeaderboardEntry, QuestionType } from "../types";
+import { Location, InteractableItem, WordDetail, LeaderboardEntry } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const SYSTEM_INSTRUCTION = `You are a strict and professional English Tutor RPG Game Master.
-Your goal is to challenge the user based on specific CEFR levels.
-- EASY MODE: CEFR A1-A2 (Basic vocabulary, simple sentences, slow speech).
-- MEDIUM MODE: CEFR B1-B2 (Conversational, idioms, normal speed).
-- HARD MODE: CEFR C1-C2 (Advanced vocabulary, nuanced grammar, abstract topics).
+const SYSTEM_INSTRUCTION = `You are an English Learning Life Simulator engine. 
+Your goal is to generate immersive daily life scenarios (home, street, school, work, shops, parks).
+For every object in a scene, provide accurate English-Vietnamese translations, IPA pronunciation, and MULTIPLE practical usage patterns (sentences or phrases).
+Format output strictly as JSON.`;
 
-Always format the output as valid JSON.`;
-
-// Themes for every 10 levels to ensure variety
-const WORLD_THEMES = [
-  "Village of Beginnings (Daily Basics)",       // 1-10
-  "Forest of Family & Roots",                   // 11-20
-  "Market City (Shopping & Food)",              // 21-30
-  "Port of Travelers (Directions)",             // 31-40
-  "Valley of Vitality (Health)",                // 41-50
-  "Tower of Commerce (Work)",                   // 51-60
-  "Ocean of Emotions (Feelings)",               // 61-70
-  "Cyber Citadel (Technology)",                 // 71-80
-  "Senate of Debate (Advanced)",                // 91-100
-  "Summit of Mastery (Literature)"              // 100+
-];
-
-// --- CACHING SYSTEM ---
-const CACHE_PREFIX = 'lingoquest_v7_'; // Bumped version to v7
+// Updated cache prefix to v2 to force regeneration with new data structure
+const CACHE_PREFIX = 'lingolife_v2_';
 
 const getFromCache = <T>(key: string): T | null => {
   try {
     const item = localStorage.getItem(CACHE_PREFIX + key);
     return item ? JSON.parse(item) : null;
-  } catch (e) {
-    console.warn("Cache read error:", e);
-    return null;
-  }
+  } catch (e) { return null; }
 };
 
 const saveToCache = (key: string, data: any) => {
   try {
     localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(data));
-  } catch (e) {
-    console.warn("Cache write error (Quota exceeded?):", e);
-  }
+  } catch (e) {}
 };
 
 const cleanJson = (text: string) => {
   return text.replace(/^```json\s*/, "").replace(/^```/, "").replace(/```$/, "").trim();
 };
 
-// Helper to generate fallback questions if API fails or returns insufficient data
-const generateFallbackQuestions = (topicName: string, count: number, startIndex: number = 0): Question[] => {
-  return Array.from({ length: count }).map((_, i) => {
-    const id = startIndex + i;
-    // Rotate through types
-    const types = [QuestionType.READING, QuestionType.LISTENING, QuestionType.WRITING];
-    const type = types[id % types.length];
-    
-    return {
-      id: `fallback-${Date.now()}-${id}`,
-      type: type,
-      question: `Challenge #${id + 1} for ${topicName}: What is a key word related to this topic?`,
-      options: ["Word A", "Word B", "Word C", "Word D"],
-      correctAnswer: "Word A",
-      explanation: "This is a local challenge generated because the connection to the Game Master was weak.",
-      vietnameseTranslation: "Câu hỏi thử thách cục bộ (do lỗi kết nối).",
-      listeningText: `Listen carefully. This is a practice sentence about ${topicName}.`
-    };
-  });
-};
-
-// ----------------------
-
-export const generateTopics = async (startLevel: number = 1, count: number = 10): Promise<Topic[]> => {
-  const cacheKey = `topics_${startLevel}_${count}`;
-  const cachedData = getFromCache<Topic[]>(cacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
+export const generateLocation = async (locationName: string): Promise<Location> => {
+  const cacheKey = `loc_${locationName.toLowerCase().replace(/\s/g, '_')}`;
+  const cached = getFromCache<Location>(cacheKey);
+  if (cached) return cached;
 
   try {
-    const themeIndex = Math.min(Math.floor((startLevel - 1) / 10), WORLD_THEMES.length - 1);
-    const currentTheme = WORLD_THEMES[themeIndex];
-    
-    let difficultyLabel = Difficulty.EASY;
-    if (startLevel > 20) difficultyLabel = Difficulty.MEDIUM;
-    if (startLevel > 50) difficultyLabel = Difficulty.HARD;
-
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
+        temperature: 1.0,
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              description: { type: Type.STRING },
-              icon: { type: Type.STRING, description: "A single emoji representing the location" },
+          type: Type.OBJECT,
+          properties: {
+            description: { type: Type.STRING },
+            items: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  emoji: { type: Type.STRING },
+                  english: { type: Type.STRING },
+                  vietnamese: { type: Type.STRING },
+                  pronunciation: { type: Type.STRING },
+                  type: { type: Type.STRING },
+                  exampleSentence: { type: Type.STRING },
+                  usagePatterns: { 
+                    type: Type.ARRAY, 
+                    items: { type: Type.STRING },
+                    description: "3 distinct sentences or phrases using this word in daily life"
+                  },
+                  description: { type: Type.STRING }
+                },
+                required: ["name", "emoji", "english", "vietnamese", "pronunciation", "exampleSentence", "usagePatterns"]
+              }
             },
-            required: ["name", "description", "icon"],
-          },
-        },
-      },
-      contents: `Generate ${count} RPG locations for levels ${startLevel}-${startLevel + count - 1}.
-      THEME: "${currentTheme}".
-      DIFFICULTY: ${difficultyLabel}.
-      
-      Names should be creative (e.g., 'Cave of Verbs', 'Market of Bargains').
-      Return strictly JSON.`,
-    });
-
-    const rawTopics = JSON.parse(cleanJson(response.text || "[]"));
-    
-    const processedTopics = rawTopics.map((t: any, index: number) => ({
-      ...t,
-      id: `topic-${startLevel + index}`,
-      levelNumber: startLevel + index,
-      difficulty: startLevel > 50 ? Difficulty.HARD : startLevel > 20 ? Difficulty.MEDIUM : Difficulty.EASY,
-      isLocked: true, 
-      chapterName: currentTheme
-    }));
-
-    saveToCache(cacheKey, processedTopics);
-    return processedTopics;
-
-  } catch (error) {
-    console.error("Failed to generate topics:", error);
-    return Array.from({ length: count }).map((_, i) => ({
-      id: `fallback-${startLevel + i}`,
-      name: `Zone ${startLevel + i}`,
-      description: "A mysterious place.",
-      difficulty: Difficulty.EASY,
-      icon: "📍",
-      isLocked: true,
-      levelNumber: startLevel + i,
-      chapterName: "Unknown"
-    }));
-  }
-};
-
-export const generateQuestions = async (topicName: string, difficulty: Difficulty, count: number): Promise<Question[]> => {
-  // NOTE: REMOVED CACHING FOR QUESTIONS to ensure variety every time.
-  
-  try {
-    const cefrLevel = difficulty === Difficulty.HARD ? "C1 (Advanced)" : difficulty === Difficulty.MEDIUM ? "B1 (Intermediate)" : "A1 (Beginner)";
-    const randomSeed = Date.now();
-
-    // Simplified prompt to reduce model confusion, but demanding strict array output
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 1.2, // High creativity to avoid repetition
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              type: { type: Type.STRING, enum: [QuestionType.READING, QuestionType.LISTENING, QuestionType.SPEAKING, QuestionType.WRITING] },
-              question: { type: Type.STRING },
-              options: { type: Type.ARRAY, items: { type: Type.STRING } },
-              listeningText: { type: Type.STRING },
-              correctAnswer: { type: Type.STRING },
-              explanation: { type: Type.STRING },
-              vietnameseTranslation: { type: Type.STRING }
+            exits: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  direction: { type: Type.STRING },
+                  targetLocationName: { type: Type.STRING },
+                  emoji: { type: Type.STRING }
+                },
+                required: ["direction", "targetLocationName"]
+              }
             },
-            required: ["type", "question", "correctAnswer", "explanation"],
+            theme: { type: Type.STRING, enum: ["bg-orange-50", "bg-blue-50", "bg-green-50", "bg-slate-50", "bg-yellow-50", "bg-pink-50", "bg-indigo-50"] }
           },
-        },
+          required: ["description", "items", "exits", "theme"]
+        }
       },
-      contents: `Generate a JSON Array of EXACTLY ${count} English questions for the RPG location: '${topicName}'.
-      Difficulty Level: ${cefrLevel}.
-      Random Seed: ${randomSeed}.
-      
-      Requirements:
-      1. Mixed Types: Reading, Listening, Speaking, Writing.
-      2. For 'LISTENING': Provide 'listeningText'.
-      3. For 'SPEAKING': 'correctAnswer' is the sentence to read.
-      4. For 'WRITING': The user must type the answer.
-      5. Provide 'vietnameseTranslation' for context.
+      contents: `Generate a location named "${locationName}".
+      1. Description: Vivid, 1 sentence.
+      2. Items: List 15-20 distinct objects/people/details visible here. High density for learning.
+         - 'english': The word.
+         - 'vietnamese': Accurate Vietnamese meaning.
+         - 'pronunciation': IPA format.
+         - 'usagePatterns': Provide 3 different common sentences using this word.
+      3. Exits: List 3-5 logical places. Encourage diversity (e.g., if in Kitchen -> Garden, Dining Room, Backyard; if in Street -> Cafe, Bus Station, Park).
       `,
     });
 
-    let text = cleanJson(response.text || "[]");
-    let rawQuestions: any[] = [];
-    
-    try {
-      rawQuestions = JSON.parse(text);
-      // Handle case where model returns an object wrapper like { items: [...] }
-      if (!Array.isArray(rawQuestions) && (rawQuestions as any).items && Array.isArray((rawQuestions as any).items)) {
-        rawQuestions = (rawQuestions as any).items;
-      }
-      if (!Array.isArray(rawQuestions)) {
-        rawQuestions = []; // Reset if invalid format
-      }
-    } catch (e) {
-      console.error("JSON Parse Error on Questions:", e);
-      rawQuestions = [];
-    }
+    const data = JSON.parse(cleanJson(response.text || "{}"));
 
-    // Process and valid questions
-    let processedQuestions = rawQuestions.map((q: any, i: number) => ({
-      ...q,
-      id: `q-${randomSeed}-${i}`,
-      // Ensure options exist for multiple choice
-      options: q.options || ["Yes", "No", "Maybe", "Unsure"]
-    }));
+    const location: Location = {
+      id: locationName,
+      name: locationName,
+      description: data.description,
+      backgroundTheme: data.theme || "bg-slate-50",
+      items: (data.items || []).map((item: any, idx: number) => ({
+        id: `item-${Date.now()}-${idx}`,
+        name: item.name,
+        emoji: item.emoji || "📦",
+        isCollected: false,
+        wordDetail: {
+          english: item.english,
+          vietnamese: item.vietnamese,
+          pronunciation: item.pronunciation,
+          type: item.type || "noun",
+          exampleSentence: item.exampleSentence, // Keep for fallback
+          usagePatterns: item.usagePatterns && item.usagePatterns.length > 0 
+            ? item.usagePatterns 
+            : [item.exampleSentence],
+          description: item.description || `A common ${item.english}.`
+        }
+      })),
+      exits: data.exits || []
+    };
 
-    // BACKFILL LOGIC: If AI generated fewer questions than 'count', fill with generated fallbacks
-    if (processedQuestions.length < count) {
-      console.warn(`AI only returned ${processedQuestions.length}/${count} questions. Backfilling...`);
-      const missingCount = count - processedQuestions.length;
-      const backfill = generateFallbackQuestions(topicName, missingCount, processedQuestions.length);
-      processedQuestions = [...processedQuestions, ...backfill];
-    }
-
-    // Trim if too many (rare)
-    if (processedQuestions.length > count) {
-        processedQuestions = processedQuestions.slice(0, count);
-    }
-
-    return processedQuestions;
+    saveToCache(cacheKey, location);
+    return location;
 
   } catch (error) {
-    console.error("Failed to generate questions (API Error):", error);
-    return generateFallbackQuestions(topicName, count);
+    console.error(error);
+    // Fallback location
+    return {
+      id: locationName,
+      name: locationName,
+      description: "You are in a quiet place, but the details are blurry.",
+      items: [],
+      exits: [{ direction: "Go Back", targetLocationName: "Bedroom", emoji: "🔙" }],
+      backgroundTheme: "bg-gray-100"
+    };
   }
 };
 
 export const generateLeaderboard = async (topicName: string): Promise<LeaderboardEntry[]> => {
-  const cacheKey = `leaderboard_${topicName.replace(/\s+/g, '')}`;
-  const cachedData = getFromCache<LeaderboardEntry[]>(cacheKey);
-  if (cachedData) return cachedData;
-
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -249,22 +150,40 @@ export const generateLeaderboard = async (topicName: string): Promise<Leaderboar
             type: Type.OBJECT,
             properties: {
               name: { type: Type.STRING },
-              avatar: { type: Type.STRING },
-              xp: { type: Type.INTEGER },
               country: { type: Type.STRING },
+              xp: { type: Type.INTEGER },
+              avatar: { type: Type.STRING }
             },
-            required: ["name", "avatar", "xp", "country"],
-          },
-        },
+            required: ["name", "country", "xp", "avatar"]
+          }
+        }
       },
-      contents: `Generate 5 fictional competitors for leaderboard. High scores.`,
+      contents: `Generate a fake leaderboard of 5 players for the topic "${topicName}".
+      Return a JSON array where each item has:
+      - name: A user nickname.
+      - country: A country flag emoji.
+      - xp: A random integer between 1000 and 5000.
+      - avatar: A face emoji.
+      `
     });
-    
+
     const data = JSON.parse(cleanJson(response.text || "[]"));
-    const processedData = data.map((d: any, i: number) => ({ ...d, rank: i + 1 }));
-    saveToCache(cacheKey, processedData);
-    return processedData;
+    return data.map((item: any, index: number) => ({
+      rank: index + 1,
+      name: item.name,
+      avatar: item.avatar || "👤",
+      xp: item.xp,
+      country: item.country || "🏳️"
+    }));
   } catch (error) {
-    return [];
+    console.error("Failed to generate leaderboard:", error);
+    // Fallback data
+    return [
+      { rank: 1, name: "LanguageMaster", avatar: "🧠", xp: 4500, country: "🇺🇸" },
+      { rank: 2, name: "PolyglotPro", avatar: "🦁", xp: 4100, country: "🇬🇧" },
+      { rank: 3, name: "WordWizard", avatar: "🧙‍♂️", xp: 3800, country: "🇨🇦" },
+      { rank: 4, name: "VocabViking", avatar: "⚔️", xp: 3200, country: "🇳🇴" },
+      { rank: 5, name: "GrammarGuru", avatar: "📚", xp: 2900, country: "🇦🇺" }
+    ];
   }
-}
+};

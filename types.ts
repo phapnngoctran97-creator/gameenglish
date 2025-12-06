@@ -1,59 +1,55 @@
 export enum GameState {
   HOME = 'HOME',
-  PROFILE = 'PROFILE',
-  MAP = 'MAP',
-  LOADING_BATTLE = 'LOADING_BATTLE',
-  BATTLE = 'BATTLE',
-  VICTORY = 'VICTORY',
-  DEFEAT = 'DEFEAT'
+  EXPLORING = 'EXPLORING',
+  EXAMINING = 'EXAMINING',
+  NOTEBOOK = 'NOTEBOOK'
 }
 
-export enum Difficulty {
-  EASY = 'Easy',
-  MEDIUM = 'Medium',
-  HARD = 'Hard'
-}
-
-export enum QuestionType {
-  READING = 'READING',     // Multiple choice standard
-  LISTENING = 'LISTENING', // Listen to text, answer question
-  SPEAKING = 'SPEAKING',   // Read aloud a sentence
-  WRITING = 'WRITING'      // Fill in the blank / Unscramble
-}
-
-export interface Topic {
-  id: string;
-  name: string;
+export interface WordDetail {
+  english: string;
+  vietnamese: string;
+  pronunciation: string; // IPA
+  type: string; // noun, verb, etc.
+  exampleSentence: string;
+  usagePatterns: string[]; // List of common phrases/sentences using the word
   description: string;
-  difficulty: Difficulty;
-  icon: string; // Emoji
-  isLocked: boolean;
-  levelNumber: number; // 1 to 100+
-  chapterName: string; // e.g., "The Village", "The City"
 }
 
-export interface Question {
+export interface InteractableItem {
   id: string;
-  type: QuestionType;
-  question: string;
-  options?: string[]; // For Reading/Listening
-  correctAnswer: string;
-  explanation: string;
-  vietnameseTranslation?: string;
-  listeningText?: string; // Text to be spoken by AI for Listening tasks
+  name: string; // The display name
+  emoji: string;
+  wordDetail: WordDetail;
+  isCollected: boolean;
 }
 
-export interface PlayerStats {
-  hp: number;
-  maxHp: number;
-  xp: number;
-  level: number;
-  gold: number;
+export interface LocationExit {
+  direction: string; // e.g., "To Kitchen", "Go Outside"
+  targetLocationName: string; // The ID/Name of the next room
+  emoji: string;
+}
+
+export interface Location {
+  id: string;
+  name: string; // e.g., "Bedroom", "Supermarket"
+  description: string; // "A cozy room with morning sunlight..."
+  items: InteractableItem[];
+  exits: LocationExit[];
+  backgroundTheme: string; // CSS class for bg color
+}
+
+export interface PlayerProgress {
+  discoveredWords: string[]; // List of IDs
+  locationHistory: string[];
 }
 
 export interface UserProfile {
   name: string;
-  avatar: string; // Emoji
+  avatar: string;
+}
+
+export interface PlayerStats {
+  xp: number;
 }
 
 export interface LeaderboardEntry {
@@ -61,5 +57,5 @@ export interface LeaderboardEntry {
   name: string;
   avatar: string;
   xp: number;
-  country: string; // Flag emoji
+  country: string;
 }

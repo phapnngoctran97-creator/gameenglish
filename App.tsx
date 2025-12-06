@@ -1,334 +1,158 @@
 import React, { useState, useEffect } from 'react';
-import { GameState, Topic, PlayerStats, Question, Difficulty, UserProfile } from './types';
-import { generateTopics, generateQuestions } from './services/geminiService';
-import { MapScreen } from './components/MapScreen';
-import { BattleScreen } from './components/BattleScreen';
-import { ProfileScreen } from './components/ProfileScreen';
-import { Leaderboard } from './components/Leaderboard';
+import { GameState, Location, InteractableItem } from './types';
+import { generateLocation } from './services/geminiService';
+import { SceneView } from './components/SceneView';
+import { ObjectDetail } from './components/ObjectDetail';
+import { Notebook } from './components/BattleScreen'; // Reused as Notebook
+import { Loader2, Home, Book, Globe } from 'lucide-react';
 import { Button } from './components/Button';
-import { Sword, Skull, Trophy, Loader2, Coins, Star, RefreshCw, Globe, User as UserIcon } from 'lucide-react';
-
-const INITIAL_STATS: PlayerStats = {
-  hp: 100,
-  maxHp: 100,
-  xp: 0,
-  level: 1,
-  gold: 0
-};
 
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.HOME);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [playerStats, setPlayerStats] = useState<PlayerStats>(INITIAL_STATS);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [currentLocationId, setCurrentLocationId] = useState("My Bedroom");
+  const [currentLocationData, setCurrentLocationData] = useState<Location | null>(null);
+  const [selectedItem, setSelectedItem] = useState<InteractableItem | null>(null);
   
-  const [currentTopic, setCurrentTopic] = useState<Topic | null>(null);
-  const [battleQuestions, setBattleQuestions] = useState<Question[]>([]);
-  const [loadingText, setLoadingText] = useState("");
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [isLoadingMoreTopics, setIsLoadingMoreTopics] = useState(false);
+  const [collectedVocabulary, setCollectedVocabulary] = useState<InteractableItem[]>([]);
+  const [visitedLocations, setVisitedLocations] = useState<Location[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize Game
+  // Load Initial Location
   useEffect(() => {
-    // Only fetch if we don't have topics
-    if (topics.length === 0) {
-      loadInitialWorld();
+    if (gameState === GameState.EXPLORING) {
+      loadLocation(currentLocationId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gameState, currentLocationId]);
 
-  const loadInitialWorld = async () => {
-    setLoadingText("Generating World Map...");
-    // Generate first 10 levels
-    const worldTopics = await generateTopics(1, 10);
-    if (worldTopics.length > 0) {
-       worldTopics[0].isLocked = false; // Unlock first level
-    }
-    setTopics(worldTopics);
-  };
-
-  const loadMoreTopics = async () => {
-    if (isLoadingMoreTopics) return;
-    setIsLoadingMoreTopics(true);
+  const loadLocation = async (id: string) => {
+    setIsLoading(true);
     
-    // Calculate where to start next batch
-    const nextStartLevel = topics.length + 1;
-    const newTopics = await generateTopics(nextStartLevel, 10);
+    // Check if we visited this place before (optional optimization: use cached version from visitedLocations)
+    // For now, we regenerate/fetch to ensure freshness or use the service cache
+    const data = await generateLocation(id);
+    setCurrentLocationData(data);
     
-    setTopics(prev => [...prev, ...newTopics]);
-    setIsLoadingMoreTopics(false);
+    // Add to history if not already there
+    setVisitedLocations(prev => {
+      if (prev.find(loc => loc.id === data.id)) return prev;
+      return [data, ...prev]; // Newest first
+    });
+
+    setIsLoading(false);
   };
 
-  const handleStartClick = () => {
-    if (!userProfile) {
-      setGameState(GameState.PROFILE);
-    } else {
-      setGameState(GameState.MAP);
-    }
+  const handleStart = () => {
+    setGameState(GameState.EXPLORING);
   };
 
-  const handleCreateProfile = (profile: UserProfile) => {
-    setUserProfile(profile);
-    setGameState(GameState.MAP);
+  const handleGoHome = () => {
+    setGameState(GameState.HOME);
+    setCurrentLocationId("My Bedroom"); // Optional: Reset or keep last location
   };
 
-  const handleSelectTopic = async (topic: Topic) => {
-    setCurrentTopic(topic);
-    setBattleQuestions([]); // Clear previous questions immediately
-    setGameState(GameState.LOADING_BATTLE);
-    setLoadingText(`Preparing Challenge: ${topic.name}...`);
+  const handleNavigate = (targetId: string) => {
+    setCurrentLocationId(targetId);
+  };
+
+  const handleItemClick = (item: InteractableItem) => {
+    setSelectedItem(item);
+    setGameState(GameState.EXAMINING);
     
-    // STRICT DIFFICULTY & QUESTION COUNT LOGIC
-    let questionCount = 5; 
-    if (topic.difficulty === Difficulty.MEDIUM) questionCount = 7;
-    if (topic.difficulty === Difficulty.HARD) questionCount = 10;
-
-    // Generate questions for this battle
-    const questions = await generateQuestions(topic.name, topic.difficulty, questionCount);
-    setBattleQuestions(questions);
-    setGameState(GameState.BATTLE);
+    // Add to notebook if new
+    setCollectedVocabulary(prev => {
+      if (prev.find(i => i.wordDetail.english === item.wordDetail.english)) return prev;
+      return [...prev, item];
+    });
   };
 
-  const handleVictory = () => {
-    if (!currentTopic) return;
-
-    // Calculate Rewards
-    const xpGain = currentTopic.difficulty === Difficulty.HARD ? 150 : currentTopic.difficulty === Difficulty.MEDIUM ? 100 : 50;
-    const goldGain = currentTopic.difficulty === Difficulty.HARD ? 100 : currentTopic.difficulty === Difficulty.MEDIUM ? 50 : 25;
-    const levelUp = (playerStats.xp + xpGain) >= (playerStats.level * 150); // Harder to level up
-
-    const newStats = {
-      ...playerStats,
-      xp: playerStats.xp + xpGain,
-      gold: playerStats.gold + goldGain,
-      level: levelUp ? playerStats.level + 1 : playerStats.level,
-      maxHp: levelUp ? playerStats.maxHp + 20 : playerStats.maxHp,
-      hp: levelUp ? playerStats.maxHp + 20 : playerStats.hp // Heal on level up
-    };
-
-    setPlayerStats(newStats);
-    
-    // Unlock next topic logic
-    const currentIndex = topics.findIndex(t => t.id === currentTopic.id);
-    
-    if (currentIndex < topics.length - 1) {
-      const newTopics = [...topics];
-      newTopics[currentIndex + 1].isLocked = false;
-      setTopics(newTopics);
-      
-      // Infinite Generation Trigger
-      if (currentIndex >= topics.length - 3) {
-        loadMoreTopics();
-      }
-    } else {
-      loadMoreTopics().then(() => {
-        setTopics(current => {
-           const updated = [...current];
-           if (updated[currentIndex + 1]) {
-             updated[currentIndex + 1].isLocked = false;
-           }
-           return updated;
-        });
-      });
-    }
-
-    setGameState(GameState.VICTORY);
+  const closeDetail = () => {
+    setSelectedItem(null);
+    setGameState(GameState.EXPLORING);
   };
 
-  const handleDefeat = () => {
-    setGameState(GameState.DEFEAT);
-  };
-
-  const handleReturnToMap = () => {
-    // Heal player slightly for free upon returning
-    setPlayerStats(prev => ({
-      ...prev,
-      hp: Math.min(prev.maxHp, prev.hp + 20)
-    }));
-    setGameState(GameState.MAP);
-    setCurrentTopic(null);
-  };
-
-  const handleRestart = () => {
-    if (window.confirm("Are you sure you want to reset all progress?")) {
-      setPlayerStats(INITIAL_STATS);
-      setGameState(GameState.HOME);
-      setTopics([]); // Clear topics to force regenerate
-      localStorage.clear(); // Clear all cache
-      window.location.reload();
-    }
-  };
-
-  // --- RENDER HELPERS ---
+  // --- RENDER ---
 
   const renderHome = () => (
-    <div className="flex flex-col items-center justify-center h-full text-center space-y-8 p-6 bg-gradient-to-b from-slate-900 to-indigo-950">
-      <div className="mb-4 animate-bounce">
-        <Sword size={64} className="text-yellow-400 mx-auto" />
+    <div className="flex flex-col items-center justify-center h-full text-center p-6 bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+      <div className="bg-white/20 p-6 rounded-full mb-6 backdrop-blur animate-pulse">
+         <Globe size={64} className="text-white" />
       </div>
-      <h1 className="text-5xl md:text-7xl font-pixel text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 drop-shadow-lg">
-        LINGO QUEST
-      </h1>
-      <p className="text-xl text-slate-300 max-w-lg font-light leading-relaxed">
-        Master English from A1 to C2. <br/>
-        Reading • Listening • Speaking • Writing
+      <h1 className="text-4xl md:text-6xl font-pixel mb-4 drop-shadow-md">LingoLife</h1>
+      <p className="text-lg md:text-xl opacity-90 mb-8 max-w-md">
+        Explore a living world, touch everything, and learn English naturally.
       </p>
-      {topics.length === 0 ? (
-         <div className="flex flex-col items-center gap-4">
-           <Loader2 className="animate-spin text-blue-400 w-8 h-8" />
-           <p className="text-sm text-slate-500 animate-pulse">{loadingText || "Waking up the AI Game Master..."}</p>
-         </div>
-      ) : (
-        <Button size="lg" onClick={handleStartClick} className="animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.6)]">
-          {userProfile ? `Continue as ${userProfile.name}` : "Start Adventure"}
-        </Button>
-      )}
-    </div>
-  );
-
-  const renderLoading = () => (
-    <div className="flex flex-col items-center justify-center h-full bg-slate-900">
-      <div className="relative">
-        <div className="absolute inset-0 bg-blue-500 rounded-full opacity-20 animate-ping"></div>
-        <Loader2 className="w-16 h-16 text-blue-400 animate-spin relative z-10" />
-      </div>
-      <h2 className="mt-8 text-2xl font-pixel text-white text-center px-4">{loadingText}</h2>
-      <p className="mt-2 text-slate-500">Generating unique challenges...</p>
-    </div>
-  );
-
-  const renderVictory = () => (
-    <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-green-900 to-slate-900 text-center p-8">
-      <Trophy className="w-24 h-24 text-yellow-400 mb-6 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)] animate-bounce" />
-      <h2 className="text-5xl font-pixel text-white mb-4">VICTORY!</h2>
-      <p className="text-xl text-green-300 mb-8">You conquered {currentTopic?.name}!</p>
+      <Button onClick={handleStart} size="lg" className="bg-white text-indigo-600 hover:bg-indigo-50 shadow-xl border-0 text-lg px-12 py-4">
+        Wake Up
+      </Button>
       
-      <div className="grid grid-cols-2 gap-4 mb-8 w-full max-w-sm">
-        <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-center gap-2 border border-slate-700">
-          <Star className="text-yellow-400" /> 
-          <span className="font-bold">+{currentTopic?.difficulty === Difficulty.HARD ? 150 : 50} XP</span>
-        </div>
-        <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-center gap-2 border border-slate-700">
-          <Coins className="text-yellow-600" />
-          <span className="font-bold">+{currentTopic?.difficulty === Difficulty.HARD ? 100 : 20} Gold</span>
-        </div>
-      </div>
-
-      <div className="flex gap-4">
-        <Button onClick={() => setShowLeaderboard(true)} variant="secondary" size="md">
-           View Rank
-        </Button>
-        <Button onClick={handleReturnToMap} variant="success" size="lg">
-           Continue Journey
-        </Button>
-      </div>
-    </div>
-  );
-
-  const renderDefeat = () => (
-    <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-red-900 to-slate-900 text-center p-8">
-      <Skull className="w-24 h-24 text-gray-300 mb-6 animate-pulse" />
-      <h2 className="text-5xl font-pixel text-red-500 mb-4">DEFEAT...</h2>
-      <p className="text-xl text-gray-400 mb-8">The monster of {currentTopic?.name} was too strong.</p>
-      <p className="text-sm text-gray-500 mb-8 max-w-md">Don't give up! Rest and try again to improve your score.</p>
-      
-      <Button onClick={handleReturnToMap} variant="primary" size="lg">Retreat to Map</Button>
+      {/* Disclaimer regarding API Key */}
+      <p className="mt-8 text-xs text-indigo-200 max-w-xs">
+        Powered by Gemini 2.5 Flash.
+      </p>
     </div>
   );
 
   return (
-    <div className="w-full h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden relative">
-      {/* Background decoration */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
-        backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)',
-        backgroundSize: '40px 40px'
-      }}></div>
+    <div className="w-full h-screen bg-slate-50 font-sans overflow-hidden relative flex flex-col">
+      
+      {gameState === GameState.HOME && renderHome()}
 
-      {/* Header (visible on Map and Battle) */}
-      {(gameState === GameState.MAP || gameState === GameState.BATTLE) && (
-        <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-40 pointer-events-none">
-          <div className="bg-slate-900/90 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-lg flex gap-4 pointer-events-auto">
-             <div className="flex flex-col">
-                <div className="flex items-center gap-1 text-xs text-slate-400 uppercase font-bold">
-                   {userProfile?.avatar} {userProfile?.name}
-                </div>
-                <span className="font-pixel text-yellow-400">LVL {playerStats.level}</span>
-             </div>
-             <div className="h-full w-px bg-slate-700"></div>
-             <div className="flex flex-col">
-                <span className="text-xs text-slate-400 uppercase font-bold">XP</span>
-                <span className="font-mono text-blue-300">{playerStats.xp}</span>
-             </div>
-             <div className="h-full w-px bg-slate-700"></div>
-             <div className="flex flex-col">
-                <span className="text-xs text-slate-400 uppercase font-bold">Gold</span>
-                <div className="flex items-center gap-1">
-                   <Coins size={14} className="text-yellow-600" />
-                   <span className="font-mono text-yellow-200">{playerStats.gold}</span>
-                </div>
-             </div>
+      {(gameState === GameState.EXPLORING || gameState === GameState.EXAMINING) && (
+        <>
+          {/* Main View Area */}
+          <div className="flex-1 overflow-hidden relative">
+            {isLoading ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 z-50">
+                <Loader2 className="animate-spin text-indigo-600 w-12 h-12 mb-4" />
+                <p className="text-slate-500 font-pixel animate-pulse">Traveling to {currentLocationId}...</p>
+              </div>
+            ) : currentLocationData ? (
+              <SceneView 
+                location={currentLocationData} 
+                onItemClick={handleItemClick}
+                onNavigate={handleNavigate}
+                onGoHome={handleGoHome}
+              />
+            ) : null}
           </div>
-          
-          <div className="pointer-events-auto flex gap-2">
-            {/* Leaderboard Toggle on Map */}
-             {gameState === GameState.MAP && (
-                <button 
-                  onClick={() => setShowLeaderboard(true)}
-                  className="bg-indigo-600 p-2 rounded-full hover:bg-indigo-500 transition-colors border border-indigo-400 shadow-lg"
-                  title="Global Rankings"
-                >
-                  <Globe size={20} className="text-white" />
-                </button>
-             )}
+
+          {/* Bottom Navigation Bar */}
+          <div className="bg-white border-t border-slate-200 p-2 flex justify-around items-center z-40 pb-safe">
+             <button 
+               className="flex flex-col items-center p-2 text-indigo-600"
+               onClick={() => setGameState(GameState.EXPLORING)}
+             >
+                <Home size={24} />
+                <span className="text-[10px] font-bold uppercase mt-1">Explore</span>
+             </button>
+             
+             <div className="w-px h-8 bg-slate-200"></div>
 
              <button 
-                onClick={handleRestart}
-                className="bg-slate-800 p-2 rounded-full hover:bg-slate-700 transition-colors border border-slate-600"
-                title="Restart Game"
-              >
-                <RefreshCw size={20} className="text-slate-400" />
+               className="flex flex-col items-center p-2 text-slate-500 hover:text-indigo-600 transition-colors"
+               onClick={() => setGameState(GameState.NOTEBOOK)}
+             >
+                <Book size={24} />
+                <span className="text-[10px] font-bold uppercase mt-1">Journal</span>
              </button>
           </div>
+        </>
+      )}
+
+      {gameState === GameState.EXAMINING && selectedItem && (
+        <ObjectDetail item={selectedItem} onClose={closeDetail} />
+      )}
+
+      {gameState === GameState.NOTEBOOK && (
+        <div className="absolute inset-0 z-50">
+          <Notebook 
+            collectedItems={collectedVocabulary} 
+            visitedLocations={visitedLocations}
+            onClose={() => setGameState(GameState.EXPLORING)} 
+          />
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="h-full w-full pt-20 pb-4 px-4 relative">
-        {gameState === GameState.HOME && renderHome()}
-        {gameState === GameState.PROFILE && <ProfileScreen onProfileCreate={handleCreateProfile} />}
-        {gameState === GameState.LOADING_BATTLE && renderLoading()}
-        {gameState === GameState.MAP && (
-          <MapScreen 
-            topics={topics} 
-            onSelectTopic={handleSelectTopic} 
-            playerLevel={playerStats.level}
-            isLoadingMore={isLoadingMoreTopics}
-          />
-        )}
-        {gameState === GameState.BATTLE && currentTopic && (
-          <BattleScreen 
-            key={currentTopic.id + Date.now()} // Force remount on new battle
-            topic={currentTopic}
-            questions={battleQuestions}
-            playerStats={playerStats}
-            onVictory={handleVictory}
-            onDefeat={handleDefeat}
-            onUpdateStats={(newStats) => setPlayerStats(prev => ({ ...prev, ...newStats }))}
-          />
-        )}
-        {gameState === GameState.VICTORY && renderVictory()}
-        {gameState === GameState.DEFEAT && renderDefeat()}
-      </main>
-      
-      {/* Global Leaderboard Overlay */}
-      {showLeaderboard && userProfile && (
-        <Leaderboard 
-          topicName={currentTopic ? currentTopic.name : "Global Ranking"} 
-          userProfile={userProfile}
-          playerStats={playerStats}
-          onClose={() => setShowLeaderboard(false)}
-        />
-      )}
     </div>
   );
 }

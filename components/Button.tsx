@@ -12,19 +12,20 @@ export const Button: React.FC<ButtonProps> = ({
   className = '', 
   ...props 
 }) => {
-  const baseStyles = "font-bold rounded-lg border-b-4 active:border-b-0 active:translate-y-1 transition-all uppercase tracking-wider font-pixel";
+  // Softer, cleaner aesthetic for Life Simulator
+  const baseStyles = "font-bold rounded-xl transition-all shadow-sm active:scale-95 flex items-center justify-center";
   
   const variants = {
-    primary: "bg-blue-500 border-blue-700 hover:bg-blue-400 text-white",
-    secondary: "bg-purple-500 border-purple-700 hover:bg-purple-400 text-white",
-    danger: "bg-red-500 border-red-700 hover:bg-red-400 text-white",
-    success: "bg-green-500 border-green-700 hover:bg-green-400 text-white",
+    primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200",
+    secondary: "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300",
+    danger: "bg-red-500 text-white hover:bg-red-600",
+    success: "bg-green-500 text-white hover:bg-green-600",
   };
 
   const sizes = {
-    sm: "px-3 py-1 text-xs",
-    md: "px-6 py-3 text-sm",
-    lg: "px-8 py-4 text-base",
+    sm: "px-3 py-1.5 text-xs",
+    md: "px-5 py-2.5 text-sm",
+    lg: "px-8 py-3.5 text-base",
   };
 
   return (
